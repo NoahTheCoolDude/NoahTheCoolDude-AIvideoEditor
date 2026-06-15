@@ -8,6 +8,7 @@ from src.ingest import find_clips, probe
 from src.analysis.shots import detect_shots, cuts_to_segments
 from src.analysis.transcribe import transcribe
 from src.analysis.classify import classify_shot
+from src.planning.planner import build_plan
 
 
 @click.group()
@@ -45,7 +46,7 @@ def analyze(input_dir, output, whisper_model, classify, threshold):
     results = []
 
     for clip_path in clips:
-        click.echo(f"\n→ {clip_path.name}")
+        click.echo(f"\n>> {clip_path.name}")
 
         click.echo("  [1/3] Probing metadata...")
         meta = probe(clip_path)
@@ -74,6 +75,45 @@ def analyze(input_dir, output, whisper_model, classify, threshold):
     out_file = output / 'analysis.json'
     out_file.write_text(json.dumps({'clips': results}, indent=2))
     click.echo(f"\nDone. Review file written to {out_file}")
+
+
+@cli.command()
+@click.option('--input', '-i', 'analysis_file',
+              type=click.Path(exists=True, path_type=Path),
+              default='output/analysis.json', show_default=True,
+              help='analysis.json produced by the analyze command')
+@click.option('--music-dir', type=click.Path(path_type=Path),
+              default='assets/music', show_default=True,
+              help='Folder of music tracks to choose from')
+@click.option('--output', '-o', type=click.Path(path_type=Path),
+              default='output', show_default=True,
+              help='Directory to write edit_plan.json')
+def plan(analysis_file, music_dir, output):
+    """Send analysis.json to Claude and write a reviewable edit plan."""
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        raise click.ClickException("ANTHROPIC_API_KEY environment variable is not set.")
+
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+
+    click.echo(f"Reading {analysis_file}...")
+    analysis = json.loads(analysis_file.read_text())
+
+    click.echo("Asking Claude to plan the edit...")
+    result = build_plan(analysis, music_dir, client)
+
+    output_path = Path(output)
+    output_path.mkdir(parents=True, exist_ok=True)
+    plan_file = output_path / 'edit_plan.json'
+    plan_file.write_text(json.dumps(result, indent=2))
+
+    seg_count = len(result['segments'])
+    duration = result.get('estimated_duration', '?')
+    music = result.get('music') or 'none'
+    click.echo(f"Done. {seg_count} segments, ~{duration}s, music: {music}")
+    click.echo(f"Review and edit: {plan_file}")
+    click.echo("When happy, run: python -m src.main assemble")
 
 
 if __name__ == '__main__':
