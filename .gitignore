@@ -3,7 +3,7 @@ samples/
 
 # Generated analysis artifacts
 frames/
-*.txt
+output/
 *.srt
 
 # Python
@@ -28,6 +28,12 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Virtual environment
+.venv/
+
+# Generated outputs
+output/
 
 # Editor
 .vscode/
